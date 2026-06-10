@@ -11,8 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # 数据库
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/career_agent"
-
+    DATABASE_URL: str = "mysql+asyncmy://root:Ilikeyou1031@127.0.0.1:3306/career_analyzer"
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
@@ -20,6 +19,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     CLAUDE_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
+    QWEN_API_KEY: Optional[str] = None
 
     # 文件上传
     UPLOAD_DIR: str = "./uploads"
@@ -31,3 +31,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+

@@ -1,4 +1,4 @@
-"""简历 + JD 联合分析 Agent（合并前两步）
+"""简历 + JD 联合分析 Agent（合并前两步）—— 使用千问
 
 输入：
   - resume_text: 简历纯文本（上传时已提取）
@@ -16,12 +16,11 @@ from app.agents.llm import LLMClient
 class ResumeJDAnalyzerAgent(BaseAgent):
     """
     合并简历解析与 JD 分析
-    一次 LLM 调用同时输出简历结构化和岗位需求分析
+    使用千问模型
     """
 
     async def run(self, resume_text: str, job_description: str) -> dict:
-        # 一次调用 LLM，同时分析简历 + JD
-        llm = LLMClient("openai")
+        llm = LLMClient("qwen")
         system_prompt = """你是一个求职分析助手。请同时完成两项任务：
 
 任务一：从以下简历文本中提取结构化信息（JSON格式）

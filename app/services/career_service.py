@@ -6,14 +6,15 @@
   ③ 学习路线 / 面试题 / 项目推荐（并行）
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.models.analysis import AnalysisTask, AnalysisResult
 from app.models.resume import Resume
 from app.workflow.orchestrator import build_career_analysis_graph, AgentState
 
 
-async def run_career_analysis(task: AnalysisTask, db: Session):
+async def run_career_analysis(task: AnalysisTask, db: AsyncSession):
     """
     执行完整的职业分析工作流：
     1. [Agent1] 简历解析 + JD 分析（合并） — 使用上传时已提取的文本
@@ -21,7 +22,8 @@ async def run_career_analysis(task: AnalysisTask, db: Session):
     3. [Agent3/4/5] 学习路线 / 面试题 / 项目推荐（并行）
     """
     # 从数据库获取简历文本（上传时已用 fitz 提取）
-    resume = db.query(Resume).filter(Resume.id == task.resume_id).first()
+    stmt = select(Resume).where(Resume.id == task.resume_id)
+    resume = (await db.execute(stmt)).scalar_one_or_none()
     if not resume or not resume.parsed_content:
         raise ValueError(f"简历 {task.resume_id} 不存在或尚未解析")
 
@@ -59,7 +61,7 @@ async def run_career_analysis(task: AnalysisTask, db: Session):
 
     # 更新任务状态
     task.status = "completed"
-    db.commit()
+    await db.commit()
 
     return final_state
 
