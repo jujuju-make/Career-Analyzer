@@ -9,7 +9,19 @@ class InterviewPrepAgent(BaseAgent):
 
     async def run(self, jd_analysis: dict) -> dict:
         llm = LLMClient("deepseek")
-        system_prompt = """你是一个面试官。请根据岗位技能要求，生成5-8道面试题。
-覆盖不同技术领域，输出 JSON 数组，每个元素包含 type（技能分类）和 question。"""
+        system_prompt = """你是一个高级面试官。根据以下JD需求和候选人的技能差距，生成8道面试题。
+
+        题目应该分三类：
+        1. 技术题（针对核心技能）
+        2. 行为题（针对工作经历）  
+        3. 项目题（针对缺失技能的实战应用）
+
+        只输出 JSON 数组，格式如下：
+        [
+        {"type": "技术题", "skill": "Redis", "question": "..."},
+        {"type": "行为题", "question": "..."},
+        ...
+        ]
+        """
         result = await llm.chat(system_prompt, str(jd_analysis))
         return {"questions": result}
