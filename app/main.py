@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.redis_client import init_redis, close_redis
 from app.core.database import init_db
-from app.routers import resume, career, interview, project
+from app.routers import resume, career, interview, project, jd
 
 
 @asynccontextmanager
@@ -52,6 +52,9 @@ app.add_middleware(
 # 注册路由
 app.include_router(resume.router)
 app.include_router(career.router)
+app.include_router(jd.router)
+app.include_router(interview.router)
+app.include_router(project.router)
 @app.get("/health")
 def health_check():
     return {"status": "ok", "app": settings.APP_NAME}

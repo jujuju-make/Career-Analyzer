@@ -33,7 +33,7 @@ def _safe_str(val):
     summary="创建求职分析（触发完整工作流）",
     description="""根据上传的简历和目标岗位 JD，自动完成：
 1. 简历解析（千问）
-2. JD 需求分析（千问）
+2. JD 需求分析（千问）- 支持文本、PDF、图片
 3. 技能差距分析（DeepSeek）
 
 返回 task_id，通过 result 接口查询分析结果。""",
@@ -70,15 +70,22 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
 
     try:
         final_state = await graph.ainvoke(initial_state)
-        gap = final_state.get("gap_analysis", {}) or {}
-        gap_data = gap.get("gap_analysis", gap) if isinstance(gap, dict) else {}
+
+        # 从 State 中提取各个 Agent 的输出
+        gap_raw = final_state.get("gap_analysis", "") or ""
+
+        resume_raw = final_state.get("resume_parsed", {}) or {}
+        resume_data = resume_raw.get("structured", resume_raw) if isinstance(resume_raw, dict) else {}
+
+        jd_raw = final_state.get("jd_analysis", {}) or {}
+        jd_data = jd_raw.get("analysis", jd_raw) if isinstance(jd_raw, dict) else {}
 
         result = AnalysisResult(
             task_id=task.id,
-            match_score=_safe_int(gap_data.get("match_score")),
-            strengths=_safe_list(gap_data.get("strengths")),
-            missing_skills=_safe_list(gap_data.get("missing_skills")),
-            summary=_safe_str(gap_data.get("summary")),
+
+            gap_analysis = gap_raw,
+            resume_structured=resume_data,
+            jd_analysis=jd_data,
         )
         db.add(result)
         task.status = "completed"
@@ -94,7 +101,11 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
 @router.get(
     "/result/{task_id}",
     summary="获取分析结果",
-    description="根据 task_id 查询技能差距分析结果，包括匹配分数、优势技能、缺失技能、总结建议。",
+    description="""根据 task_id 查询完整的分析结果，包括：
+1. 简历解析（HR视角）
+2. JD分析（技术官视角）
+3. 差距分析（技术大牛视角）—— 匹配分、优劣势、风险信号、项目可信度、面试建议、诚实评价
+""",
 )
 async def get_analysis_result(task_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(AnalysisTask).where(AnalysisTask.id == task_id)
@@ -105,14 +116,12 @@ async def get_analysis_result(task_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(AnalysisResult).where(AnalysisResult.task_id == task_id)
     result = (await db.execute(stmt)).scalar_one_or_none()
 
-    return {
-        "task_id": task.id,
-        "target_position": task.target_position,
-        "status": task.status,
-        "result": {
-            "match_score": result.match_score if result else None,
-            "strengths": result.strengths if result else [],
-            "missing_skills": result.missing_skills if result else [],
-            "summary": result.summary if result else None,
-        } if result else None,
-    }
+    if not result:
+        return {
+            "task_id": task.id,
+            "target_position": task.target_position,
+            "status": task.status,
+            "result": None,
+        }
+
+    return result.gap_analysis

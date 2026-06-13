@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: Optional[str] = None
     DEEPSEEK_API_KEY: Optional[str] = None
     QWEN_API_KEY: Optional[str] = None
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    QWEN_MODEL: str = "qwen3.7-plus"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    OPENAI_MODEL: str = "gpt-4o"
+    ALLOWED_IMAGE_FORMATS: str = ".png, .jpg, .jpeg, .gif, .webp"
 
     # 文件上传
     UPLOAD_DIR: str = "./uploads"

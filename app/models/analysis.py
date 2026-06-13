@@ -24,8 +24,12 @@ class AnalysisResult(Base):
 
     id = Column(String(50), primary_key=True, default=lambda: f"result_{uuid.uuid4().hex[:12]}")
     task_id = Column(String(50), nullable=False, index=True)
-    match_score = Column(Integer, nullable=True)
-    strengths = Column(JSON, default=list)
-    missing_skills = Column(JSON, default=list)
-    summary = Column(Text, nullable=True)
+
+    # 原有字段
+    gap_analysis = Column(String(5000), nullable=True)
+    # 新增：简历解析和JD分析的完整输出
+    resume_structured = Column(JSON, nullable=True)              # 简历结构化信息
+    jd_analysis = Column(JSON, nullable=True)                    # JD分析完整结果
+
     created_at = Column(DateTime, default=datetime.utcnow)
+

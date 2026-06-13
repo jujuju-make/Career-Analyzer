@@ -32,7 +32,7 @@ class AgentState(TypedDict):
     # Agent 输出
     resume_parsed: dict | None          # 千问：简历解析结果
     jd_analysis: dict | None            # 千问：JD 分析结果
-    gap_analysis: dict | None           # DeepSeek：差距分析结果
+    gap_analysis: str | None           # DeepSeek：差距分析结果
     # 控制
     errors: Annotated[Sequence[str], operator.add]
 

@@ -7,7 +7,8 @@ from typing import List, Optional
 class AnalysisRequest(BaseModel):
     resume_id: str = Field(..., description="上传简历时返回的 resume_id，如 resume_xxx")
     target_position: str = Field(..., description="目标岗位名称，如 AI Agent开发实习生")
-    job_description: str = Field(..., description="岗位描述文本（支持直接粘贴 JD 全文）")
+    job_description: str = Field(..., description="岗位描述文本或 JD 图片路径")
+    jd_type: str = Field(default="text", description="JD 类型：text（文本）| image（图片）| pdf（PDF文件）")
 class AnalysisTaskResponse(BaseModel):
     task_id: str = Field(..., description="分析任务 ID，用于查询结果，如 task_xxx")
     status: str = Field("processing", description="任务状态：processing / completed / failed")
