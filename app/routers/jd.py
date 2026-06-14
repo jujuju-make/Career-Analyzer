@@ -54,8 +54,11 @@ async def upload_jd_image(
     with open(file_path, "wb") as f:
         f.write(content)
 
+    # 统一转为绝对路径，避免路径格式问题
+    abs_path = os.path.abspath(file_path)
+
     return {
-        "jd_image_path": file_path,
+        "jd_image_path": abs_path,
         "filename": file.filename,
         "status": "uploaded",
         "message": "JD 图片上传成功，请在分析时使用这个路径作为 job_description，并将 jd_type 设置为 image"

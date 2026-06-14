@@ -47,18 +47,22 @@ class LLMClient:
     async def chat(self, system_prompt: str, user_message: str, **kwargs) -> Union[str, Dict[str, Any]]:
         """调用 LLM 进行对话"""
         model = kwargs.pop("model", self.model)
-        response_format = kwargs.pop("response_format", {"type": "json_object"})
+        temperature = kwargs.pop("temperature", 0.1)
 
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=[
+        create_kwargs = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            temperature=kwargs.pop("temperature", 0.1),
-            response_format=response_format,
-            **kwargs,
-        )
+            "temperature": temperature,
+        }
+        # 千问不支持 response_format 参数
+        if self.provider != "qwen":
+            create_kwargs["response_format"] = {"type": "json_object"}
+        create_kwargs.update(kwargs)
+
+        response = await self.client.chat.completions.create(**create_kwargs)
         
         content = response.choices[0].message.content.strip()
         
@@ -137,18 +141,22 @@ class LLMClient:
         ]
 
         model = kwargs.pop("model", self.model)
-        response_format = kwargs.pop("response_format", {"type": "json_object"})
+        temperature = kwargs.pop("temperature", 0.1)
 
-        response = await self.client.chat.completions.create(
-            model=model,
-            messages=[
+        # 构建请求参数，千问不支持 response_format
+        create_kwargs = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content},
             ],
-            temperature=kwargs.pop("temperature", 0.1),
-            response_format=response_format,
-            **kwargs,
-        )
+            "temperature": temperature,
+        }
+        if self.provider != "qwen":
+            create_kwargs["response_format"] = {"type": "json_object"}
+        create_kwargs.update(kwargs)
+
+        response = await self.client.chat.completions.create(**create_kwargs)
 
         response_text = response.choices[0].message.content.strip()
 

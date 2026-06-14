@@ -8,7 +8,7 @@ from app.agents.llm import LLMClient
 class GapAnalyzerAgent(BaseAgent):
     """对比简历技能与 JD 需求，计算匹配度 & 差距（使用 DeepSeek）"""
 
-    async def run(self, resume_info: dict, jd_analysis: dict) -> dict:
+    async def run(self, resume_info: dict, jd_analysis: dict) -> str:
         llm = LLMClient("deepseek")
         system_prompt = """你是该行业的资深技术专家，带过20+人的技术团队，面试过500+候选人，亲手拒过无数名校毕业、大厂背景的候选人。你的团队每年在1000份简历里只挑10个人。
 
@@ -107,6 +107,9 @@ class GapAnalyzerAgent(BaseAgent):
   },
 
   "honest_assessment": "你最诚实的看法（300字以内）\n\n不用顾虑任何人的感受。假设你在技术总监的闭门会议上讨论这个候选人，你会说什么？这个人到底行不行？他/她简历上的哪些地方让你觉得"这可能是假的"？如果招进来，你觉得最大的风险是什么？如果错过了，你会后悔吗？"
+
+  以下是回答样例：
+  “我（会/不会）这个邀请这个候选人进行面试，.......(这些是你的理由)”
 }"""
 
         user_msg = f"简历信息：{resume_info}\n\n岗位分析：{jd_analysis}"

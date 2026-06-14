@@ -20,8 +20,12 @@ class JDAnalyzerAgent(BaseAgent):
         """
         llm = LLMClient("qwen")
         
+        # 规范化路径，避免 Windows 下路径格式问题
+        normalized_path = os.path.normpath(jd_input)
+        
         # 判断输入类型
-        if os.path.isfile(jd_input):
+        if os.path.isfile(normalized_path):
+            jd_input = normalized_path
 
             file_path = Path(jd_input)
             suffix = file_path.suffix.lower()

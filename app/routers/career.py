@@ -40,6 +40,14 @@ def _safe_str(val):
     response_model=AnalysisTaskResponse,
 )
 async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_db)):
+    import traceback
+    try:
+        print(f"[DEBUG] 收到请求: resume_id={req.resume_id}, target={req.target_position}, jd_type={req.jd_type}")
+        print(f"[DEBUG] job_description 前100字: {str(req.job_description)[:100]}")
+    except Exception as parse_err:
+        print(f"[DEBUG] 参数解析失败: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"参数解析失败: {str(parse_err)}")
+
     stmt = select(Resume).where(Resume.id == req.resume_id)
     resume = (await db.execute(stmt)).scalar_one_or_none()
     if not resume:
@@ -93,7 +101,10 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
     except Exception as e:
         task.status = "failed"
         await db.commit()
-        raise HTTPException(status_code=500, detail=f"分析失败：{str(e)}")
+        import traceback
+        error_detail = f"分析失败：{str(e)}\n{traceback.format_exc()}"
+        print(error_detail)  # 打印到终端
+        raise HTTPException(status_code=500, detail=error_detail)
 
     return AnalysisTaskResponse(task_id=task.id, status="completed")
 

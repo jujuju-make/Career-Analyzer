@@ -18,6 +18,7 @@ from langgraph.graph import StateGraph, END
 from app.agents.resume_parser import ResumeParserAgent
 from app.agents.jd_analyzer import JDAnalyzerAgent
 from app.agents.gap_analyzer import GapAnalyzerAgent
+from app.agents.resume_optimizer import ResumeOptimizationAgent
 # -------- Graph State --------
 
 class AgentState(TypedDict):
@@ -33,6 +34,7 @@ class AgentState(TypedDict):
     resume_parsed: dict | None          # 千问：简历解析结果
     jd_analysis: dict | None            # 千问：JD 分析结果
     gap_analysis: str | None           # DeepSeek：差距分析结果
+    optimition: str | None
     # 控制
     errors: Annotated[Sequence[str], operator.add]
 
@@ -62,6 +64,11 @@ async def analyze_gap(state: AgentState) -> dict:
     )
     return {"gap_analysis": result}
 
+async def optimize_resume(state: AgentState) -> dict:
+    """Deepseek: 简历优化建议（直接从 state 获取数据）"""
+    agent = ResumeOptimizationAgent()
+    result = await agent.run(state)
+    return {"optimition": result}
 
 # -------- 构建图 --------
 
@@ -74,6 +81,9 @@ def build_career_analysis_graph():
     workflow.add_node("parse_resume", parse_resume)
     workflow.add_node("analyze_jd", analyze_jd)
     workflow.add_node("analyze_gap", analyze_gap)
+    workflow.add_node("optimize_resume", optimize_resume)
+
+    """简历JD分析团队"""
 
     # 设置入口 —— 简历解析和 JD 分析并行启动
     workflow.set_entry_point("parse_resume")
@@ -83,7 +93,13 @@ def build_career_analysis_graph():
     workflow.add_edge("parse_resume", "analyze_gap")
     workflow.add_edge("analyze_jd", "analyze_gap")
 
-    workflow.add_edge("analyze_gap", END)
+    """能力提升团队"""
+
+    #完成差距分析后，进入简历优化
+    workflow.add_edge("parse_resume", "optimize_resume")
+    workflow.add_edge("analyze_gap", "optimize_resume")
+
+    workflow.add_edge("optimize_resume", END)
 
     return workflow.compile()
 
