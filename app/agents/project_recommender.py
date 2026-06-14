@@ -1,15 +1,46 @@
-"""项目推荐 Agent —— 使用 DeepSeek"""
+"""项目推荐 Agent —— 根据 JD 需求从 GitHub 推荐实战项目"""
 
+from typing import List, Dict, Any
 from app.agents.base import BaseAgent
-from app.agents.llm import LLMClient
+from app.tools.github_search import search_github_projects_by_skills
 
 
 class ProjectRecommenderAgent(BaseAgent):
-    """根据技能缺口推荐实战项目（使用 DeepSeek）"""
+    """根据 JD 分析结果，从 GitHub 搜索推荐实战项目"""
 
-    async def run(self, gap_analysis: dict) -> dict:
-        llm = LLMClient("deepseek")
-        system_prompt = """你是一个项目推荐专家。请根据技能差距分析结果,推荐2-3个实战项目。
-每个项目应能覆盖多个缺失技能。输出 JSON 数组，每个元素包含 title 和 reason。"""
-        result = await llm.chat(system_prompt, str(gap_analysis))
-        return {"projects": result}
+    async def run(self, jd_analysis: dict) -> List[Dict[str, Any]]:
+        """
+        根据 JD 分析结果推荐 3 个 GitHub 项目
+
+        :param jd_analysis: JD 分析结果（含 core_skills 等）
+        :return: 3 个 star 数最多的推荐项目列表
+        """
+        # 从 JD 分析中提取技能关键词
+        skills = self._extract_skills(jd_analysis)
+
+        # 调用工具按技能搜索 GitHub 项目，取 star 数最多的 3 个
+        top_projects = await search_github_projects_by_skills(skills, max_results=3)
+
+        return top_projects
+
+    def _extract_skills(self, jd_analysis: dict) -> List[str]:
+        """从 JD 分析结果中提取技能关键词"""
+        skills = []
+
+        # 从 core_skills 提取
+        core_skills = jd_analysis.get("core_skills", []) or []
+        for skill in core_skills:
+            if isinstance(skill, dict):
+                name = skill.get("skill_name", "")
+                if name:
+                    skills.append(name)
+
+        # 从 nice_to_have 提取
+        nice_to_have = jd_analysis.get("nice_to_have", []) or []
+        for skill in nice_to_have:
+            if isinstance(skill, dict):
+                name = skill.get("skill_name", "")
+                if name:
+                    skills.append(name)
+
+        return skills
