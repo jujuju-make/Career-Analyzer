@@ -1,4 +1,4 @@
-"""学习规划 API —— 项目推荐、学习路线等"""
+"""学习规划 API —— 项目推荐、简历优化建议等"""
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -7,15 +7,9 @@ from sqlalchemy import select
 from typing import List, Optional
 
 from app.core.database import get_db
-from app.models.analysis import AnalysisResult, AnalysisTask
-from app.agents.project_recommender import ProjectRecommenderAgent
+from app.models.analysis import AnalysisResult
 
 router = APIRouter(prefix="/api/v1/learning", tags=["学习规划"])
-
-
-class ProjectRecommendRequest(BaseModel):
-    """项目推荐请求"""
-    task_id: str = Field(..., description="分析任务 ID（来自 career/analyze 接口返回的 task_id）")
 
 
 class GitHubProject(BaseModel):
@@ -34,41 +28,58 @@ class ProjectRecommendResponse(BaseModel):
     projects: List[GitHubProject] = Field(..., description="推荐的 3 个 GitHub 项目")
 
 
-@router.post(
-    "/recommend-projects",
-    summary="推荐 GitHub 实战项目",
-    description="""根据分析结果（JD 分析 + 差距分析），从 GitHub 搜索推荐 3 个 star 数最多的实战项目。
+class ResumeOptimizeResponse(BaseModel):
+    """简历优化建议响应"""
+    suggestion: str = Field(..., description="简历优化建议文本")
 
-使用方式：
-1. 先调用 career/analyze 获取 task_id
-2. 传入 task_id，系统自动从数据库获取 JD 分析和差距分析结果
-3. 返回 3 个按 stars 排序的 GitHub 项目""",
+
+@router.get(
+    "/recommend-projects",
+    summary="获取最新分析的 GitHub 项目推荐",
+    description="""获取最近一次分析结果的 GitHub 项目推荐（无需传参，自动取最新数据）。
+
+项目推荐在 career/analyze 工作流中自动完成，与简历优化并行执行。""",
     response_model=ProjectRecommendResponse,
 )
-async def recommend_projects(req: ProjectRecommendRequest, db: AsyncSession = Depends(get_db)):
-    """根据分析结果推荐 GitHub 项目"""
-    # 查询分析结果
-    stmt = select(AnalysisResult).where(AnalysisResult.task_id == req.task_id)
+async def get_recommend_projects(db: AsyncSession = Depends(get_db)):
+    """获取最新分析的 GitHub 项目推荐"""
+    stmt = (
+        select(AnalysisResult)
+        .order_by(AnalysisResult.created_at.desc())
+        .limit(1)
+    )
     result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
-        raise HTTPException(status_code=404, detail="分析结果不存在，请先调用 career/analyze")
+        raise HTTPException(status_code=404, detail="暂无分析结果，请先调用 career/analyze")
 
-    # 检查任务状态
-    stmt = select(AnalysisTask).where(AnalysisTask.id == req.task_id)
-    task = (await db.execute(stmt)).scalar_one_or_none()
-    if not task or task.status != "completed":
-        raise HTTPException(status_code=400, detail="分析任务未完成，请等待分析完成后再试")
+    projects = result.project_recommendations
+    if not projects:
+        raise HTTPException(status_code=404, detail="暂无项目推荐数据")
 
-    jd_analysis = result.jd_analysis
-    if not jd_analysis:
-        raise HTTPException(status_code=400, detail="JD 分析结果为空")
+    return ProjectRecommendResponse(projects=projects)
 
-    try:
-        agent = ProjectRecommenderAgent()
-        projects = await agent.run(jd_analysis)
-        return ProjectRecommendResponse(projects=projects)
-    except Exception as e:
-        import traceback
-        error_detail = f"项目推荐失败：{str(e)}\n{traceback.format_exc()}"
-        print(error_detail)
-        raise HTTPException(status_code=500, detail=error_detail)
+
+@router.get(
+    "/resume-optimize",
+    summary="获取最新分析的简历优化建议",
+    description="""获取最近一次分析结果的简历优化建议（无需传参，自动取最新数据）。
+
+简历优化在 career/analyze 工作流中自动完成，与项目推荐并行执行。""",
+    response_model=ResumeOptimizeResponse,
+)
+async def get_resume_optimize(db: AsyncSession = Depends(get_db)):
+    """获取最新分析的简历优化建议"""
+    stmt = (
+        select(AnalysisResult)
+        .order_by(AnalysisResult.created_at.desc())
+        .limit(1)
+    )
+    result = (await db.execute(stmt)).scalar_one_or_none()
+    if not result:
+        raise HTTPException(status_code=404, detail="暂无分析结果，请先调用 career/analyze")
+
+    optimition = result.optimition
+    if not optimition:
+        raise HTTPException(status_code=404, detail="暂无简历优化建议数据")
+
+    return ResumeOptimizeResponse(suggestion=optimition)

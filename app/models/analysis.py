@@ -30,6 +30,8 @@ class AnalysisResult(Base):
     # 新增：简历解析和JD分析的完整输出
     resume_structured = Column(JSON, nullable=True)              # 简历结构化信息
     jd_analysis = Column(JSON, nullable=True)                    # JD分析完整结果
+    project_recommendations = Column(JSON, nullable=True)        # 项目推荐结果
+    optimition = Column(Text, nullable=True)                     # 简历优化建议
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

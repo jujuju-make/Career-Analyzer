@@ -18,7 +18,7 @@ Career-Agent/
 │   │
 │   ├── models/                   # 数据库表（SQLAlchemy ORM）
 │   │   ├── resume.py             #   简历表（id, filename, file_path, parsed_content, status）
-│   │   ├── analysis.py           #   分析任务 + 完整分析结果（含大牛评价9个字段）
+│   │   ├── analysis.py           #   分析任务 + 完整分析结果（含大牛评价9个字段 + 项目推荐）
 │   │   ├── roadmap.py            #   学习路线表（预留）
 │   │   ├── interview.py          #   面试题表（预留）
 │   │   └── project.py            #   项目推荐表（预留）
@@ -36,10 +36,18 @@ Career-Agent/
 │   │   ├── resume_parser.py      #   简历解析 → 千问（HR 视角：挑刺打分、可信度评估）
 │   │   ├── jd_analyzer.py        #   JD 分析   → 千问（技术官视角：真实面试标准）
 │   │   ├── gap_analyzer.py       #   差距分析  → DeepSeek（大牛视角：严苛评价、8级 verdict）
-│   │   └── resume_jd_analyzer.py #   合并版 Agent（预留/备选，把前两步合并为一次调用）
+│   │   ├── resume_optimizer.py   #   简历优化  → DeepSeek（根据差距分析给出修改建议）
+│   │   ├── project_recommender.py #  项目推荐  → 调用 GitHub Search 工具推荐实战项目
+│   │   ├── resume_jd_analyzer.py #   合并版 Agent（预留/备选，把前两步合并为一次调用）
+│   │   ├── interview_prep.py     #   面试准备（预留）
+│   │   └── roadmap_generator.py  #   学习路线（预留）
+│   │
+│   ├── tools/                    # 独立工具模块
+│   │   ├── __init__.py           #   工具模块初始化
+│   │   └── github_search.py      #   GitHub Search API 封装（按 stars 排序搜索项目）
 │   │
 │   ├── workflow/                 # Agent 工作流编排
-│   │   └── orchestrator.py       #   LangGraph 有向图（3个节点：parse_resume ∥ analyze_jd → analyze_gap）
+│   │   └── orchestrator.py       #   LangGraph 有向图（5个节点：parse_resume ∥ analyze_jd → analyze_gap → optimize_resume ∥ recommend_projects）
 │   │
 │   ├── routers/                  # API 路由（用户接口）
 │   │   ├── resume.py             #   POST /api/v1/resume/upload（上传 PDF，自动提取文本）
@@ -47,6 +55,7 @@ Career-Agent/
 │   │   │                         #   GET  /api/v1/career/result/{id}（查询完整分析结果）
 │   │   ├── jd.py                 #   POST /api/v1/jd/upload-image（上传 JD 截图）
 │   │   │                         #   POST /api/v1/jd/upload-pdf（上传 JD PDF）
+│   │   ├── learning.py           #   GET  /api/v1/learning/recommend-projects（获取最新项目推荐）
 │   │   ├── interview.py          #   面试题接口（预留）
 │   │   └── project.py            #   项目推荐接口（预留）
 │   │
@@ -128,9 +137,29 @@ Career-Agent/
            │  }                                       │
            └─────────────────────────────────────────┘
                                   │
-                    ┌─────────────┴─────────────┐
-                    │  全部存入 AnalysisResult 表  │
-                    │  返回 task_id 给用户        │
+                    ┌─────────────┴─────────────────────┐
+                    │  Node4 和 Node5 并行执行           │
+                    ├───────────────────────────────────┤
+           ┌─ Node4: optimize_resume ────────────────┐  │
+           │  ResumeOptimizationAgent（DeepSeek）     │  │
+           │  输入: state["resume_parsed"]            │  │
+           │        + state["gap_analysis"]           │  │
+           │  输出: optimition（简历修改建议文本）     │  │
+           └─────────────────────────────────────────┘  │
+                                                        │
+           ┌─ Node5: recommend_projects ──────────────┐  │
+           │  ProjectRecommenderAgent                 │  │
+           │  输入: state["jd_analysis"]               │  │
+           │  流程: 提取技能 → 调用 GitHub Search API  │  │
+           │  输出: project_recommendations = [        │  │
+           │    { name, url, description, stars,       │  │
+           │      forks, language, topics }            │  │
+           │  ]                                        │  │
+           └─────────────────────────────────────────┘  │
+                                  │                     │
+                    ┌─────────────┴─────────────────────┘
+                    │  全部存入 AnalysisResult 表
+                    │  返回 task_id 给用户
                     └───────────────────────────┘
 
 ④ 用户查询结果
@@ -139,7 +168,12 @@ Career-Agent/
            ├─ 匹配摘要：match_score, strengths, missing_skills, summary
            ├─ 大牛评价：overall_verdict, red_flags, honest_assessment, ...
            ├─ 面试建议：interview_recommendation（含考察重点）
-           └─ 原始分析：resume_structured, jd_analysis
+           ├─ 原始分析：resume_structured, jd_analysis
+           └─ 项目推荐：project_recommendations（3 个 GitHub 项目）
+
+⑤ 用户获取项目推荐（无需传参，自动取最新）
+   └─→ GET /api/v1/learning/recommend-projects
+       └─→ 从 analysis_results 表读取最新一条的 project_recommendations
 ```
 
 ## API 一览
@@ -151,6 +185,7 @@ Career-Agent/
 | `/api/v1/jd/upload-pdf` | POST | 上传 JD PDF | `routers/jd.py` |
 | `/api/v1/career/analyze` | POST | 发起完整分析（文本/图片/PDF 三种 JD 输入） | `routers/career.py` |
 | `/api/v1/career/result/{id}` | GET | 查询完整分析结果 | `routers/career.py` |
+| `/api/v1/learning/recommend-projects` | GET | 获取最新分析的 GitHub 项目推荐（无需传参） | `routers/learning.py` |
 
 ## 模型分配
 
@@ -159,6 +194,15 @@ Career-Agent/
 | ResumeParser | 千问 qwen3.7-plus | 👔 资深 HR（挑刺、可信度评估、致命问题） | `agents/resume_parser.py` |
 | JDAnalyzer | 千问 qwen3.7-plus | 👨‍💼 技术面试官（真实面试标准、淘汰线） | `agents/jd_analyzer.py` |
 | GapAnalyzer | DeepSeek deepseek-chat | 🧠 技术大牛（严苛对比、8级 verdict） | `agents/gap_analyzer.py` |
+| ResumeOptimization | DeepSeek deepseek-chat | ✍️ 简历优化师（根据差距分析给出修改建议） | `agents/resume_optimizer.py` |
+| ProjectRecommender | DeepSeek deepseek-chat | 🔍 项目搜索专家（生成搜索关键词，调用 GitHub API） | `agents/project_recommender.py` |
+
+## 工具模块
+
+| 工具 | 说明 | 位置 |
+|------|------|------|
+| `search_github_projects` | 按关键词搜索 GitHub 项目，按 stars 排序 | `tools/github_search.py` |
+| `search_github_projects_by_skills` | 按技能列表搜索，自动去重排序 | `tools/github_search.py` |
 
 ## 数据库表
 
@@ -166,7 +210,7 @@ Career-Agent/
 |------|---------|------|
 | `resumes` | id, filename, file_path, parsed_content, status | 上传的简历 |
 | `analysis_tasks` | id, resume_id, job_description, status | 每次分析任务 |
-| `analysis_results` | id, task_id, match_score, strengths, missing_skills, summary, **overall_verdict**, **critical_gaps**, **red_flags**, **career_trajectory_analysis**, **project_credibility**, **interview_recommendation**, **honest_assessment**, **resume_structured**, **jd_analysis** | 完整分析结果（加粗为新增的大牛评价字段） |
+| `analysis_results` | id, task_id, gap_analysis, resume_structured, jd_analysis, **project_recommendations** | 完整分析结果（含项目推荐） |
 
 ## 三个 Agent 的 Prompt 设计思路
 

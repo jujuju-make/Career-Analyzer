@@ -73,6 +73,8 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
         "resume_parsed": None,
         "jd_analysis": None,
         "gap_analysis": None,
+        "optimition": None,
+        "project_recommendations": None,
         "errors": [],
     }
 
@@ -88,12 +90,17 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
         jd_raw = final_state.get("jd_analysis", {}) or {}
         jd_data = jd_raw.get("analysis", jd_raw) if isinstance(jd_raw, dict) else {}
 
+        project_raw = final_state.get("project_recommendations", []) or []
+        optimition_raw = final_state.get("optimition", "") or ""
+
         result = AnalysisResult(
             task_id=task.id,
 
             gap_analysis = gap_raw,
             resume_structured=resume_data,
             jd_analysis=jd_data,
+            project_recommendations=project_raw,
+            optimition=optimition_raw,
         )
         db.add(result)
         task.status = "completed"
