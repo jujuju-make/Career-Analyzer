@@ -69,6 +69,7 @@ async def create_analysis(req: AnalysisRequest, db: AsyncSession = Depends(get_d
         "resume_id": task.resume_id,
         "resume_file_path": resume.file_path,
         "jd_input": task.job_description,
+        "jd_type": req.jd_type,  # 传递 JD 类型
         "target_position": task.target_position,
         "task_id": task.id,
         "resume_parsed": None,

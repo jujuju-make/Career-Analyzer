@@ -29,6 +29,7 @@ class AgentState(TypedDict):
     resume_id: str
     resume_file_path: str               # 简历 PDF 路径
     jd_input: str                       # JD 文本或文件路径
+    jd_type: str                        # JD 类型：text | image | pdf
     target_position: str
     task_id: str
 

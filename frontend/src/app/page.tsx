@@ -25,6 +25,8 @@ export default function Home() {
   const [jdText, setJdText] = useState("");
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [jdInput, setJdInput] = useState("");
+  const [jdType, setJdType] = useState<"text" | "image" | "pdf">("text");
+  const [jdImagePath, setJdImagePath] = useState<string | null>(null);
 
   // Position
   const [targetPosition, setTargetPosition] = useState("");
@@ -62,7 +64,11 @@ export default function Home() {
       setError(null);
       try {
         const result = await api.uploadJdImage(jdFile);
-        setJdInput(result.text);
+        // 保存图片路径，后续分析时传给后端
+        setJdImagePath(result.jd_image_path);
+        setJdType("image");
+        // 清空文本输入，避免混淆
+        setJdText("");
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -79,7 +85,9 @@ export default function Home() {
     setError(null);
     setProgressMsg("正在解析简历和 JD...");
     try {
-      const result = await api.startAnalysis(resumeId, jdInput, targetPosition);
+      // 根据 JD 类型决定传什么
+      const jdPayload = jdType === "image" && jdImagePath ? jdImagePath : jdInput;
+      const result = await api.startAnalysis(resumeId, jdPayload, targetPosition, jdType);
       setTaskId(result.task_id);
       // 持久化到 localStorage
       localStorage.setItem("career_task_id", result.task_id);
@@ -100,6 +108,8 @@ export default function Home() {
     setJdText("");
     setJdFile(null);
     setJdInput("");
+    setJdType("text");
+    setJdImagePath(null);
     setTargetPosition("");
     setStep("upload");
   };

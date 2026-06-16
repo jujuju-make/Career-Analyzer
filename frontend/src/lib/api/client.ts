@@ -43,7 +43,7 @@ export const api = {
       method: "POST",
       body: form,
     });
-    return handleResponse<{ jd_id: string; text: string }>(res);
+    return handleResponse<{ jd_image_path: string; filename: string; status: string }>(res);
   },
 
   async uploadJdPdf(file: File) {
@@ -53,11 +53,11 @@ export const api = {
       method: "POST",
       body: form,
     });
-    return handleResponse<{ jd_id: string; text: string }>(res);
+    return handleResponse<{ jd_pdf_path: string; filename: string; status: string }>(res);
   },
 
   // ─── Analysis ───
-  async startAnalysis(resumeId: string, jdInput: string, targetPosition: string) {
+  async startAnalysis(resumeId: string, jdInput: string, targetPosition: string, jdType: string = "text") {
     const res = await fetch(`${API_BASE}/api/v1/career/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -65,6 +65,7 @@ export const api = {
         resume_id: resumeId,
         job_description: jdInput,
         target_position: targetPosition,
+        jd_type: jdType,
       }),
     });
     return handleResponse<{ task_id: string; status: string }>(res);
