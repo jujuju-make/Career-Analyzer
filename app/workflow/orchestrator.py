@@ -18,7 +18,6 @@ from langgraph.graph import StateGraph, END
 from app.agents.resume_parser import ResumeParserAgent
 from app.agents.jd_analyzer import JDAnalyzerAgent
 from app.agents.gap_analyzer import GapAnalyzerAgent
-from app.agents.resume_optimizer import ResumeOptimizationAgent
 from app.agents.project_recommender import ProjectRecommenderAgent
 
 
@@ -61,20 +60,16 @@ async def analyze_jd(state: AgentState) -> dict:
 
 
 async def analyze_gap(state: AgentState) -> dict:
-    """DeepSeek：技能差距分析"""
+    """DeepSeek：技能差距分析 + 简历优化建议（合并为一次调用）"""
     agent = GapAnalyzerAgent()
     result = await agent.run(
         resume_info=state["resume_parsed"],
         jd_analysis=state["jd_analysis"],
     )
-    return {"gap_analysis": result}
-
-
-async def optimize_resume(state: AgentState) -> dict:
-    """Deepseek: 简历优化建议（直接从 state 获取数据）"""
-    agent = ResumeOptimizationAgent()
-    result = await agent.run(state)
-    return {"optimition": result}
+    return {
+        "gap_analysis": result.get("gap_analysis", ""),
+        "optimition": result.get("optimition", ""),
+    }
 
 
 async def recommend_projects(state: AgentState) -> dict:
@@ -95,27 +90,21 @@ def build_career_analysis_graph():
     workflow.add_node("parse_resume", parse_resume)
     workflow.add_node("analyze_jd", analyze_jd)
     workflow.add_node("analyze_gap", analyze_gap)
-    workflow.add_node("optimize_resume", optimize_resume)
     workflow.add_node("recommend_projects", recommend_projects)
-
-    """简历JD分析团队"""
 
     # 设置入口 —— 简历解析和 JD 分析并行启动
     workflow.set_entry_point("parse_resume")
     workflow.add_edge("__start__", "analyze_jd")
 
-    # 简历解析和 JD 分析都完成后，进入差距分析
+    # 简历解析和 JD 分析都完成后，进入差距分析（gap_analyzer 同时输出 optimition）
     workflow.add_edge("parse_resume", "analyze_gap")
     workflow.add_edge("analyze_jd", "analyze_gap")
 
-    """能力提升团队"""
-
-    # 差距分析完成后，简历优化和项目推荐并行执行
-    workflow.add_edge("analyze_gap", "optimize_resume")
+    # 差距分析完成后，项目推荐并行执行
     workflow.add_edge("analyze_gap", "recommend_projects")
 
     # 两者都完成后结束
-    workflow.add_edge("optimize_resume", END)
+    workflow.add_edge("analyze_gap", END)
     workflow.add_edge("recommend_projects", END)
 
     return workflow.compile()

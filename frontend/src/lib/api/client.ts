@@ -8,8 +8,17 @@ export interface ApiError {
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `HTTP ${res.status}`);
+    try {
+      const error = await res.json();
+      // FastAPI 422 错误 detail 可能是数组
+      const detail = Array.isArray(error.detail)
+        ? error.detail.map((d: any) => d.msg || String(d)).join("; ")
+        : error.detail || res.statusText;
+      throw new Error(detail);
+    } catch (e: any) {
+      if (e.message && !e.message.includes("JSON")) throw e;
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
   }
   return res.json();
 }

@@ -1,5 +1,6 @@
 """职业分析 API —— 一个接口触发完整工作流"""
 
+import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -139,7 +140,108 @@ async def get_analysis_result(task_id: str, db: AsyncSession = Depends(get_db)):
             "task_id": task.id,
             "target_position": task.target_position,
             "status": task.status,
-            "result": None,
+            "gap_analysis": None,
+            "optimition": None,
+            "project_recommendations": None,
+            "resume_structured": None,
+            "jd_analysis": None,
         }
 
-    return result.gap_analysis
+    # 解析 gap_analysis
+    gap_analysis = result.gap_analysis
+    if isinstance(gap_analysis, str):
+        text = gap_analysis.strip()
+        print(f"[DEBUG] gap_analysis 原始文本前100: {text[:100]}")
+        # 先尝试去除 Markdown 代码块标记
+        import re
+        json_block = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+        if json_block:
+            text = json_block.group(1).strip()
+            print(f"[DEBUG] 去除代码块后前50: {text[:50]}")
+        else:
+            print(f"[DEBUG] 未匹配到代码块")
+        # 用栈匹配找到最外层的 {}
+        start = text.find('{')
+        if start != -1:
+            stack = []
+            outer_end = -1
+            for i in range(start, len(text)):
+                if text[i] == '{':
+                    stack.append(i)
+                elif text[i] == '}':
+                    if stack:
+                        stack.pop()
+                        if not stack:  # 最外层闭合
+                            outer_end = i
+                            break
+            if outer_end != -1:
+                text = text[start:outer_end+1]
+                print(f"[DEBUG] 栈匹配提取后前50: {text[:50]}")
+            else:
+                print(f"[DEBUG] 栈匹配失败，回退到 rfind")
+                end = text.rfind('}')
+                if end > start:
+                    text = text[start:end+1]
+        try:
+            parsed = json.loads(text)
+            print(f"[DEBUG] JSON 解析成功，类型: {type(parsed).__name__}")
+            # 新格式：{"gap_analysis": {...}} 嵌套结构
+            if isinstance(parsed, dict) and "gap_analysis" in parsed:
+                gap_analysis = parsed["gap_analysis"]
+                print(f"[DEBUG] 嵌套格式，gap_analysis 类型: {type(gap_analysis).__name__}")
+            else:
+                gap_analysis = parsed
+                print(f"[DEBUG] 直接格式，keys: {list(parsed.keys())[:5]}")
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"[DEBUG] JSON 解析失败: {e}")
+            # 尝试补全缺少的 }
+            if text.count('{') > text.count('}'):
+                missing = text.count('{') - text.count('}')
+                text_fixed = text + '}' * missing
+                print(f"[DEBUG] 尝试补全 {missing} 个 }}")
+                try:
+                    parsed = json.loads(text_fixed)
+                    print(f"[DEBUG] 补全后解析成功!")
+                    if isinstance(parsed, dict) and "gap_analysis" in parsed:
+                        gap_analysis = parsed["gap_analysis"]
+                    else:
+                        gap_analysis = parsed
+                except (json.JSONDecodeError, TypeError):
+                    print(f"[DEBUG] 补全后仍然解析失败")
+            # 兼容旧格式：Markdown 文本 → 尝试提取关键字段
+            match_score = None
+            overall_verdict = None
+            score_match = re.search(r'\*\*match_score\*\*\s*:\s*(\d+)', text, re.IGNORECASE)
+            if score_match:
+                match_score = int(score_match.group(1))
+            verdict_match = re.search(r'\*\*overall_verdict\*\*\s*:\s*(.+?)(?:\n|$)', text, re.IGNORECASE)
+            if verdict_match:
+                overall_verdict = verdict_match.group(1).strip()
+            if match_score is not None or overall_verdict is not None:
+                gap_analysis = {
+                    "match_score": match_score,
+                    "overall_verdict": overall_verdict,
+                    "verdict_reason": "",
+                    "critical_gaps": {"non_negotiable_misses": [], "trainable_gaps": []},
+                    "strengths": [],
+                    "red_flags": [],
+                    "career_trajectory_analysis": {},
+                    "project_credibility": {},
+                    "interview_recommendation": {"verdict": "no", "reason": ""},
+                    "honest_assessment": text[:500],
+                    "_raw_text": text[:2000],  # 原始 Markdown 文本，前端备用
+                }
+                print(f"[DEBUG] 旧格式兼容，gap_analysis 类型: {type(gap_analysis).__name__}")
+            else:
+                print(f"[DEBUG] 旧格式兼容也失败")
+
+    return {
+        "task_id": result.task_id,
+        "target_position": task.target_position,
+        "status": task.status,
+        "gap_analysis": gap_analysis,
+        "optimition": result.optimition,
+        "project_recommendations": result.project_recommendations,
+        "resume_structured": result.resume_structured,
+        "jd_analysis": result.jd_analysis,
+    }

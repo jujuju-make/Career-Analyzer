@@ -33,12 +33,14 @@ class InterviewSession(Base):
     round_name = Column(String(50), nullable=False)                # tech_round1 / tech_round2 / leader / hr
 
     status = Column(String(20), default="in_progress")             # in_progress / completed / failed
-    current_question_index = Column(Integer, default=0)            # 当前第几题（0-based）
     current_is_follow_up = Column(Integer, default=0)              # 当前是否是追问（0=原题, 1=追问）
 
-    # 题目和回答
-    modules = Column(JSON, nullable=True)                          # 模块配置 [{name, weight, questions: [...]}]
-    answers = Column(JSON, default=list)                           # 已回答记录 [{q_idx, is_follow_up, question, answer, correct, score, feedback}]
+    # 各模块已问题数（按需出题用）
+    asked_modules = Column(JSON, default=dict)                     # {"project_experience": 0, "job_skills": 0, "foundation": 0, "behavior": 0}
+    # 当前题目信息（用于恢复面试）
+    current_question = Column(JSON, nullable=True)                 # {question, expected_answer, follow_up, module_name, module_label}
+    # 已回答记录
+    answers = Column(JSON, default=list)                           # [{module, question, answer, correct, score, feedback, is_follow_up}]
 
     # 最终结果
     verdict = Column(String(20), nullable=True)

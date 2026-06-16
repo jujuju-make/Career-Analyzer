@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Career Agent — AI Career Copilot",
+  title: "AI 职业助手 — 智能简历分析与面试模拟",
   description:
-    "AI-powered career analysis tool. Analyze resumes, identify skill gaps, get project recommendations, optimize your resume, and practice mock interviews.",
+    "AI 驱动的职业分析工具。上传简历、分析技能差距、获取优化建议、模拟面试练习。",
 };
 
 export default function RootLayout({
@@ -26,8 +26,8 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      lang="zh-CN"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Nav />

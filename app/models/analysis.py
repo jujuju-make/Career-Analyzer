@@ -26,7 +26,7 @@ class AnalysisResult(Base):
     task_id = Column(String(50), nullable=False, index=True)
 
     # 原有字段
-    gap_analysis = Column(String(5000), nullable=True)
+    gap_analysis = Column(Text, nullable=True)
     # 新增：简历解析和JD分析的完整输出
     resume_structured = Column(JSON, nullable=True)              # 简历结构化信息
     jd_analysis = Column(JSON, nullable=True)                    # JD分析完整结果

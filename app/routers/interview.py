@@ -1,4 +1,4 @@
-"""面试 API —— 多轮对话模拟面试"""
+"""面试 API —— 多轮对话模拟面试（按需出题）"""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,36 +57,17 @@ class AnswerResult(BaseModel):
     final_result: Optional[dict] = None           # 最终结果（面试结束时）
 
 
-# -------- 辅助函数 --------
-
-def _get_current_question(modules: list, q_idx: int) -> tuple:
-    """根据 question_index 找到对应的题目和模块"""
-    idx = 0
-    for m in modules:
-        for q in m.get("questions", []):
-            if idx == q_idx:
-                return m, q
-            idx += 1
-    return None, None
-
-
-def _get_total_questions(modules: list) -> int:
-    """计算总题数"""
-    return sum(len(m.get("questions", [])) for m in modules)
-
-
 # -------- 接口 --------
 
 @router.post(
     "/start",
     summary="开始模拟面试",
     description="""根据分析结果开始技术一面多轮对话面试。
-
-生成 14 道题（项目经验6题 + 岗位技能4题 + 基础知识3题 + 行为面试1题），返回第一题。""",
+按需生成题目，每次只生成一道题。""",
     response_model=StartInterviewResponse,
 )
 async def start_interview(req: StartInterviewRequest, db: AsyncSession = Depends(get_db)):
-    """开始面试，生成题目，返回第一题"""
+    """开始面试，生成第一题"""
     # 查询分析结果
     stmt = select(AnalysisResult).where(AnalysisResult.task_id == req.task_id)
     result = (await db.execute(stmt)).scalar_one_or_none()
@@ -99,15 +80,15 @@ async def start_interview(req: StartInterviewRequest, db: AsyncSession = Depends
     if not task:
         raise HTTPException(status_code=404, detail="分析任务不存在")
 
-    # 生成题目
+    # 生成第一题
     agent = InterviewRound1Agent()
-    modules = await agent.generate_questions(
+    question_data = await agent.generate_first_question(
         resume_info=result.resume_structured or {},
         jd_analysis=result.jd_analysis or {},
         gap_analysis=result.gap_analysis or "",
     )
 
-    if not modules or not modules[0].get("questions"):
+    if not question_data or not question_data.get("question"):
         raise HTTPException(status_code=500, detail="生成面试题失败")
 
     # 创建 session
@@ -115,29 +96,25 @@ async def start_interview(req: StartInterviewRequest, db: AsyncSession = Depends
         task_id=req.task_id,
         round_name="tech_round1",
         status="in_progress",
-        current_question_index=0,
         current_is_follow_up=0,
-        modules=modules,
+        asked_modules={"project_experience": 0, "job_skills": 0, "foundation": 0, "behavior": 0},
+        current_question=question_data,
         answers=[],
     )
     db.add(session)
     await db.commit()
     await db.refresh(session)
 
-    # 返回第一题
-    total = _get_total_questions(modules)
-    m, q = _get_current_question(modules, 0)
-
     return StartInterviewResponse(
         session_id=session.id,
         task_id=req.task_id,
         round_name="tech_round1",
         current_question=QuestionData(
-            question=q["question"],
+            question=question_data["question"],
             question_index=0,
-            total=total,
-            module_name=m["name"],
-            module_label=m["label"],
+            total=agent.TOTAL_QUESTIONS,
+            module_name=question_data.get("module_name", "project_experience"),
+            module_label=question_data.get("module_label", "项目经验"),
             is_follow_up=False,
         ),
     )
@@ -165,120 +142,140 @@ async def submit_answer(req: AnswerRequest, db: AsyncSession = Depends(get_db)):
     if session.status != "in_progress":
         raise HTTPException(status_code=400, detail="面试已结束")
 
-    modules = session.modules
-    q_idx = session.current_question_index
-    is_follow_up = session.current_is_follow_up
-    total = _get_total_questions(modules)
+    is_follow_up = bool(session.current_is_follow_up)
+    current_q = session.current_question or {}
+    history = session.answers or []
+    asked_modules = session.asked_modules or {}
 
-    # 找到当前题目
-    m, q = _get_current_question(modules, q_idx)
-    if not q:
-        raise HTTPException(status_code=500, detail="题目数据异常")
+    # 查询分析结果（用于生成下一题）
+    stmt = select(AnalysisResult).where(AnalysisResult.task_id == session.task_id)
+    analysis_result = (await db.execute(stmt)).scalar_one_or_none()
+    stmt = select(AnalysisTask).where(AnalysisTask.id == session.task_id)
+    task = (await db.execute(stmt)).scalar_one_or_none()
 
     # 评估回答
     agent = InterviewRound1Agent()
-    history = session.answers or []
-
     evaluation = await agent.evaluate_answer(
-        question=q["question"],
-        expected_answer=q.get("expected_answer", ""),
-        follow_up=q.get("follow_up", ""),
+        question=current_q.get("question", ""),
+        expected_answer=current_q.get("expected_answer", ""),
+        follow_up=current_q.get("follow_up", ""),
         answer=req.answer,
         history=history,
-        is_follow_up=bool(is_follow_up),
+        is_follow_up=is_follow_up,
     )
 
     # 记录回答
     answer_record = {
-        "q_idx": q_idx,
-        "module": m["name"],
-        "question": q["question"],
+        "module": current_q.get("module_name", "unknown"),
+        "question": current_q.get("question", ""),
         "answer": req.answer,
         "correct": evaluation.get("correct", "partial"),
         "score": evaluation.get("score", 50),
         "feedback": evaluation.get("feedback", ""),
-        "is_follow_up": bool(is_follow_up),
+        "is_follow_up": is_follow_up,
     }
     all_answers = list(history) + [answer_record]
     session.answers = all_answers
 
-    # 决定下一步
+    # 更新 asked_modules（原题才计数，追问不计）
+    if not is_follow_up:
+        module_name = current_q.get("module_name", "project_experience")
+        asked_modules[module_name] = asked_modules.get(module_name, 0) + 1
+        session.asked_modules = asked_modules
+
     correct = evaluation.get("correct", "partial")
 
-    # 如果是原题且回答部分正确，且还有追问没用 → 追问
-    if not is_follow_up and correct == "partial" and q.get("follow_up"):
+    # 如果是原题且回答部分正确，且还有追问 → 追问
+    if not is_follow_up and correct == "partial" and current_q.get("follow_up"):
         session.current_is_follow_up = 1
         await db.commit()
+
+        # 清理追问内容中的内部说明前缀
+        follow_up_text = current_q["follow_up"]
+        import re
+        follow_up_text = re.sub(
+            r'^(如果[^，,]*[模糊不清不全][，,]\s*)?(追问[：:]?\s*)?',
+            '',
+            follow_up_text
+        ).strip()
 
         return AnswerResult(
             correct=correct,
             score=evaluation.get("score", 50),
             feedback=evaluation.get("feedback", ""),
             is_follow_up=False,
-            follow_up_question=q["follow_up"],
+            follow_up_question=follow_up_text,
             next_question=None,
             interview_over=False,
         )
 
-    # 否则进入下一题
-    next_q_idx = q_idx + 1
+    # 否则生成下一题
+    next_question_data = await agent.generate_next_question(
+        resume_info=analysis_result.resume_structured or {} if analysis_result else {},
+        jd_analysis=analysis_result.jd_analysis or {} if analysis_result else {},
+        gap_analysis=analysis_result.gap_analysis or "" if analysis_result else "",
+        history=all_answers,
+        asked_modules=asked_modules,
+    )
 
-    # 如果还有下一题
-    if next_q_idx < total:
-        session.current_question_index = next_q_idx
-        session.current_is_follow_up = 0
+    # 检查是否应该停止
+    if next_question_data.get("should_stop"):
+        # 所有题目答完或提前结束，生成最终结果
+        final_result = await agent.generate_final_verdict(all_answers)
+
+        session.status = "completed"
+        session.verdict = final_result.get("verdict", "fail")
+        session.overall_score = final_result.get("overall_score", 0)
+        session.module_scores = final_result.get("module_scores", {})
         await db.commit()
 
-        next_m, next_q = _get_current_question(modules, next_q_idx)
+        # 存盘到 InterviewRound
+        interview_round = InterviewRound(
+            task_id=session.task_id,
+            round_name="tech_round1",
+            round_order=1,
+            verdict=final_result.get("verdict", "fail"),
+            score=final_result.get("overall_score", 0),
+            summary=final_result.get("summary", ""),
+            details=final_result,
+        )
+        db.add(interview_round)
+        await db.commit()
 
         return AnswerResult(
             correct=correct,
             score=evaluation.get("score", 50),
             feedback=evaluation.get("feedback", ""),
-            is_follow_up=bool(is_follow_up),
+            is_follow_up=is_follow_up,
             follow_up_question=None,
-            next_question=QuestionData(
-                question=next_q["question"],
-                question_index=next_q_idx,
-                total=total,
-                module_name=next_m["name"],
-                module_label=next_m["label"],
-                is_follow_up=False,
-            ),
-            interview_over=False,
+            next_question=None,
+            interview_over=True,
+            final_result=final_result,
         )
 
-    # 所有题目答完，生成最终结果
-    final_result = await agent.generate_final_verdict(modules, all_answers)
-
-    session.status = "completed"
-    session.verdict = final_result.get("verdict", "fail")
-    session.overall_score = final_result.get("overall_score", 0)
-    session.module_scores = final_result.get("module_scores", {})
+    # 有下一题
+    session.current_question = next_question_data
+    session.current_is_follow_up = 0
     await db.commit()
 
-    # 存盘到 InterviewRound
-    interview_round = InterviewRound(
-        task_id=session.task_id,
-        round_name="tech_round1",
-        round_order=1,
-        verdict=final_result.get("verdict", "fail"),
-        score=final_result.get("overall_score", 0),
-        summary=final_result.get("summary", ""),
-        details=final_result,
-    )
-    db.add(interview_round)
-    await db.commit()
+    total_asked = sum(asked_modules.values())
+    total = agent.TOTAL_QUESTIONS
 
     return AnswerResult(
         correct=correct,
         score=evaluation.get("score", 50),
         feedback=evaluation.get("feedback", ""),
-        is_follow_up=bool(is_follow_up),
+        is_follow_up=is_follow_up,
         follow_up_question=None,
-        next_question=None,
-        interview_over=True,
-        final_result=final_result,
+        next_question=QuestionData(
+            question=next_question_data["question"],
+            question_index=total_asked,
+            total=total,
+            module_name=next_question_data.get("module_name", "unknown"),
+            module_label=next_question_data.get("module_label", ""),
+            is_follow_up=False,
+        ),
+        interview_over=False,
     )
 
 
@@ -294,21 +291,23 @@ async def get_session_status(session_id: str, db: AsyncSession = Depends(get_db)
     if not session:
         raise HTTPException(status_code=404, detail="面试会话不存在")
 
-    modules = session.modules
-    total = _get_total_questions(modules)
-    m, q = _get_current_question(modules, session.current_question_index)
+    asked_modules = session.asked_modules or {}
+    total_asked = sum(asked_modules.values())
+    agent = InterviewRound1Agent()
+    current_q = session.current_question or {}
 
     return {
         "session_id": session.id,
         "task_id": session.task_id,
         "round_name": session.round_name,
         "status": session.status,
-        "current_question_index": session.current_question_index,
-        "total": total,
-        "current_question": q["question"] if q else None,
-        "current_module": m["label"] if m else None,
+        "total_asked": total_asked,
+        "total": agent.TOTAL_QUESTIONS,
+        "current_question": current_q.get("question"),
+        "current_module": current_q.get("module_label"),
         "is_follow_up": bool(session.current_is_follow_up),
         "answers_count": len(session.answers or []),
+        "asked_modules": asked_modules,
         "verdict": session.verdict,
         "overall_score": session.overall_score,
         "module_scores": session.module_scores,
