@@ -258,7 +258,17 @@ async def submit_answer(req: AnswerRequest, db: AsyncSession = Depends(get_db)):
     session.current_is_follow_up = 0
     await db.commit()
 
+    # 计算当前已完成的原题数
+    # 注意：如果是追问回答（is_follow_up=True），asked_modules 没有增加，
+    # 但实际已经完成了这轮（原题+追问），所以 question_index 应该用 total_asked
+    # 如果是原题回答（is_follow_up=False），asked_modules 已经 +1，
+    # total_asked 已经包含了当前这题
     total_asked = sum(asked_modules.values())
+    # 如果是追问回答，total_asked 没有包含当前这轮的原题计数，
+    # 但 asked_modules 在原题时已经 +1 了，所以 total_asked 是正确的
+    # 前端用 currentIndex + 1 显示题号，所以这里返回的 question_index 应该是
+    # 已完成的原题数（即下一题的索引，从 0 开始）
+    question_index = total_asked
     total = agent.TOTAL_QUESTIONS
 
     return AnswerResult(
@@ -269,7 +279,7 @@ async def submit_answer(req: AnswerRequest, db: AsyncSession = Depends(get_db)):
         follow_up_question=None,
         next_question=QuestionData(
             question=next_question_data["question"],
-            question_index=total_asked,
+            question_index=question_index,
             total=total,
             module_name=next_question_data.get("module_name", "unknown"),
             module_label=next_question_data.get("module_label", ""),

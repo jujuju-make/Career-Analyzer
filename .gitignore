@@ -1,0 +1,34 @@
+# 环境变量（含 API Key、数据库密码）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 上传文件（用户简历 PDF、JD 截图等）
+uploads/
+!uploads/.gitkeep
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

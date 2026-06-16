@@ -68,7 +68,14 @@ function InterviewContent() {
       if (status.status === "in_progress") {
         setSessionId(sid);
         setTotalQuestions(status.total);
-        setCurrentIndex(status.total_asked);
+        // 如果有追问未完成，当前题还没结束，索引回退一题
+        // 例如：答完第1题触发追问，total_asked=1，但追问还没答完
+        // 此时应该显示"第1题/共14题"而不是"第2题/共14题"
+        if (status.is_follow_up) {
+          setCurrentIndex(Math.max(0, status.total_asked - 1));
+        } else {
+          setCurrentIndex(status.total_asked);
+        }
         setIsFollowUp(status.is_follow_up);
         setStarted(true);
 
@@ -142,20 +149,24 @@ function InterviewContent() {
         { role: "system", content: result.feedback, score: result.score, correct: result.correct },
       ]);
 
-      if (result.follow_up_question) {
-        setFollowUpQuestion(result.follow_up_question);
-        setIsFollowUp(true);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: result.follow_up_question!, module_label: "追问" },
-        ]);
-      } else if (result.next_question) {
+      // 更新进度：如果有 next_question，使用它的 question_index
+      // 如果是追问（follow_up_question），进度不变（追问不算新题）
+      // 如果是结束（interview_over），进度已到终点
+      if (result.next_question) {
         setCurrentIndex(result.next_question.question_index);
         setIsFollowUp(false);
         setFollowUpQuestion(null);
         setMessages((prev) => [
           ...prev,
           { role: "assistant", content: result.next_question!.question, module_label: result.next_question!.module_label },
+        ]);
+      } else if (result.follow_up_question) {
+        // 追问：进度不变，但更新追问状态
+        setFollowUpQuestion(result.follow_up_question);
+        setIsFollowUp(true);
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: result.follow_up_question!, module_label: "追问" },
         ]);
       } else if (result.interview_over) {
         setInterviewOver(true);
